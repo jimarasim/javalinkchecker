@@ -1,0 +1,6 @@
+#surefire_0
+#Sat Jan 12 15:26:19 PST 2019
+basedir=/Users/jameskarasim/Downloads/installed/repositories/javalinkchecker
+test=JavaLinkChecker
+user.dir=/Users/jameskarasim/Downloads/installed/repositories/javalinkchecker
+localRepository=/Users/jameskarasim/.m2/repository
