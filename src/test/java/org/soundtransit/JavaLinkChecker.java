@@ -6,6 +6,8 @@ import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 
 import java.io.PrintWriter;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.List;
@@ -20,6 +22,8 @@ public class JavaLinkChecker extends Thread {
     public static Hashtable<String,String> toVisit = new Hashtable<String,String>();
     public static Hashtable<String,String> visited = new Hashtable<String,String>();
     public static Hashtable<String,String> pageNotFound = new Hashtable<String,String>();
+    public static Hashtable<String,String> imagesFound = new Hashtable<String,String>();
+    public static Hashtable<String,String> imagesNotFound = new Hashtable<String,String>();
 
     @Before
     public void Before(){
@@ -41,29 +45,42 @@ public class JavaLinkChecker extends Thread {
         System.out.println("INITIAL SIZE:" + toVisit.size());
         driver.quit();
 
-        //launch n browsers to visit urls found and find more on each page, until there are no more unique pages left
+        //launch n browsers to visit urls found and find more on each page, until there are no more unique pages left. report pages not found.
         for(int i=0; i<numBrowsers; i++){
             (new JavaLinkChecker()).start();
         }
 
-        //wait until all browsers/threads are finished to end the test
+        //wait until all browsers/threads are finished
         while(semaphore > 0){
             Thread.sleep(5000);
         }
+
+        //check status code for all image links found, and report images not found
+        CheckImagesNotFound();
 
         //report pages visited and pages not found
         PrintWriter writer = new PrintWriter("linkcrawler.htm", "UTF-8");
         writer.write("<html><head></head><body>");
 
         writer.write("VISITED "+visited.size()+" UNIQUE PAGES, "+pageNotFound.size()+" PAGES NOT FOUND <br />\r\n");
+        writer.write("PROCESSED "+imagesFound.size()+" UNIQUE IMAGES, "+imagesNotFound.size()+" IMAGES NOT FOUND <br />\r\n");
 
         for(String key:visited.keySet()) {
             writer.write("VISITED: <a href='"+key+"' target='_blank'>"+key+"</a> REFERRER: <a href='" + visited.get(key) + "' target='_blank'>"+visited.get(key)+"</a><br />\r\n");
         }
 
+        for(String key:imagesFound.keySet()) {
+            writer.write("PROCESSED: <a href='"+key+"' target='_blank'>"+key+"</a> REFERRER: <a href='" + imagesFound.get(key) + "' target='_blank'>"+imagesFound.get(key)+"</a><br />\r\n");
+        }
+
         for(String key:pageNotFound.keySet()) {
             System.out.println("PAGE NOT FOUND: "+key+" REFERRER: " + pageNotFound.get(key));
             writer.write("PAGE NOT FOUND: <a href='"+key+"' target='_blank'>"+key+"</a> REFERRER: <a href='" + pageNotFound.get(key) + "' target='_blank'>"+pageNotFound.get(key)+"</a><br />\r\n");
+        }
+
+        for(String key:imagesNotFound.keySet()) {
+            System.out.println("IMAGE NOT FOUND: "+key+" REFERRER: " + imagesNotFound.get(key));
+            writer.write("IMAGE NOT FOUND: <a href='"+key+"' target='_blank'>"+key+"</a> REFERRER: <a href='" + imagesNotFound.get(key) + "' target='_blank'>"+imagesNotFound.get(key)+"</a><br />\r\n");
         }
 
         writer.write("</body></html>");
@@ -104,9 +121,10 @@ public class JavaLinkChecker extends Thread {
                         visited.put(endUrl, href[0]);
                     }
                 }
-                //don't get unique hrefs if the page is not found. this will avoid countless search pages
+                //don't get unique hrefs and images if the page is not found. this will avoid countless search pages
                 if(!IsPageNotFound(driver,href)) {
                     GetUniqueHrefs(driver, href[0]);
+                    GetUniqueImages(driver, href[0]);
                 }
             }
         } while(href != null);
@@ -146,6 +164,50 @@ public class JavaLinkChecker extends Thread {
     }
 
     /**
+     * Gather a list of unique image src and source srcset urls for checking response codes later.
+     * @param driver
+     * @param currentHref
+     */
+    public void GetUniqueImages(WebDriver driver, String currentHref) {
+        //get img src urls
+        List<WebElement> images = driver.findElements(By.cssSelector("img[src]"));
+        for(WebElement image:images) {
+            String imageUrl = image.getAttribute("src");
+
+            //append baseurl to src, if not already included
+            if(imageUrl.startsWith("/")) {
+                imageUrl = seed + imageUrl;
+            }
+
+            //add unique image src urls to imagesFound table
+            if(!imagesFound.containsKey(imageUrl)) {
+                imagesFound.put(imageUrl,currentHref);
+            }
+        }
+
+        //get source srcset and image srcset urls
+        List<WebElement> srcsets = driver.findElements(By.cssSelector("source[srcset],img[srcset]"));
+        for(WebElement srcset:srcsets) {
+            String imageUrl = srcset.getAttribute("srcset");
+
+            //remove "1x" etc from srcset
+            if(imageUrl.contains(" ")) {
+                imageUrl = imageUrl.substring(0, imageUrl.indexOf(" "));
+            }
+
+            //append baseurl to src, if not already included
+            if(imageUrl.startsWith("/")) {
+                imageUrl = seed + imageUrl;
+            }
+
+            //add unique srcset urls to imagesFound table
+            if(!imagesFound.containsKey(imageUrl)) {
+                imagesFound.put(imageUrl,currentHref);
+            }
+        }
+    }
+
+    /**
      * Get one of the unique hrefs gathered to visit, and move it from "toVisit" to "visited".
      * @return
      */
@@ -154,6 +216,7 @@ public class JavaLinkChecker extends Thread {
 
         System.out.println("TOVISIT: " + toVisit.size() + " VISITED: " + visited.size());
 
+        //DEBUG: if(toVisit.isEmpty() || visited.size()>99)
         if(toVisit.isEmpty()) {
             return null;
         } else {
@@ -200,6 +263,25 @@ public class JavaLinkChecker extends Thread {
         }
         else {
             return false;
+        }
+    }
+
+    public void CheckImagesNotFound() {
+
+        //check for broken images
+        for(String key:imagesFound.keySet()) {
+            System.out.println("IMAGE:'"+key+"' REFERRER:'"+imagesFound.get(key)+"'");
+
+            try {
+                HttpURLConnection connection = (HttpURLConnection) new URL(key).openConnection();
+                connection.setRequestMethod("HEAD");
+                int responseCode = connection.getResponseCode();
+                if (responseCode != 200) {
+                    throw new Exception("IMAGE NOT FOUND");
+                }
+            } catch (Exception ex) {
+                imagesNotFound.put(key,imagesFound.get(key));
+            }
         }
     }
 }
