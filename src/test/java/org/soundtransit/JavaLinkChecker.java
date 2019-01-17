@@ -16,7 +16,6 @@ public class JavaLinkChecker extends Thread {
     private final String seekHrefStartsWith = "/";
     private final String loadMoreButtonCssSelector = "button[class*='load-more']";
 
-    private static int semaphore = 0;
     public static SortedMap<String,String> toVisit = Collections.synchronizedSortedMap(new TreeMap<String,String>());
     public static SortedMap<String,String> visited = Collections.synchronizedSortedMap(new TreeMap<String,String>());
     public static SortedMap<String,String> pageNotFound = Collections.synchronizedSortedMap(new TreeMap<String,String>());
@@ -44,13 +43,15 @@ public class JavaLinkChecker extends Thread {
         driver.quit();
 
         //launch n browsers to visit urls found and find more on each page, until there are no more unique pages left. report pages not found.
+        Thread[] threads = new Thread[numBrowsers];
         for(int i=0; i<numBrowsers; i++){
-            (new JavaLinkChecker()).start();
+            threads[i] = new JavaLinkChecker();
+            threads[i].start();
         }
 
         //wait until all browsers/threads are finished
-        while(semaphore > 0){
-            Thread.sleep(5000);
+        for(int i=0; i<numBrowsers; i++) {
+            threads[i].join();
         }
 
         //check status code for all image links found, and report images not found
@@ -91,8 +92,6 @@ public class JavaLinkChecker extends Thread {
      * This is the thread function that launches a browser, and visits unique pages until none are found.  While it's running, it records pages that were not found.
      */
     public void run(){
-        semaphore++;
-
         WebDriver driver = new ChromeDriver();
 
         String[] href;
@@ -128,8 +127,6 @@ public class JavaLinkChecker extends Thread {
         } while(href != null);
 
         driver.quit();
-
-        semaphore--;
     }
 
     /**
@@ -214,7 +211,7 @@ public class JavaLinkChecker extends Thread {
 
         System.out.println("TOVISIT: " + toVisit.size() + " VISITED: " + visited.size());
 
-        //if(toVisit.isEmpty() || visited.size()>99){
+        //if(toVisit.isEmpty() || visited.size()>49){
         if(toVisit.isEmpty()) {
             return null;
         } else {
@@ -267,6 +264,11 @@ public class JavaLinkChecker extends Thread {
 
         //check for broken images
         for(String key:imagesFound.keySet()) {
+            //skip embedded images
+            if(key.startsWith("data")) {
+                continue;
+            }
+            
             System.out.println("IMAGE:'"+key+"' REFERRER:'"+imagesFound.get(key)+"'");
 
             try {
