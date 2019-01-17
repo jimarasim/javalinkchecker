@@ -268,7 +268,7 @@ public class JavaLinkChecker extends Thread {
             if(key.startsWith("data")) {
                 continue;
             }
-            
+
             System.out.println("IMAGE:'"+key+"' REFERRER:'"+imagesFound.get(key)+"'");
 
             try {
