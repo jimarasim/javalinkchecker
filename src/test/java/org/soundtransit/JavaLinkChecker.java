@@ -8,9 +8,7 @@ import org.openqa.selenium.chrome.ChromeDriver;
 import java.io.PrintWriter;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.util.Enumeration;
-import java.util.Hashtable;
-import java.util.List;
+import java.util.*;
 
 public class JavaLinkChecker extends Thread {
     private final int numBrowsers = 7;
@@ -19,11 +17,11 @@ public class JavaLinkChecker extends Thread {
     private final String loadMoreButtonCssSelector = "button[class*='load-more']";
 
     private static int semaphore = 0;
-    public static Hashtable<String,String> toVisit = new Hashtable<String,String>();
-    public static Hashtable<String,String> visited = new Hashtable<String,String>();
-    public static Hashtable<String,String> pageNotFound = new Hashtable<String,String>();
-    public static Hashtable<String,String> imagesFound = new Hashtable<String,String>();
-    public static Hashtable<String,String> imagesNotFound = new Hashtable<String,String>();
+    public static SortedMap<String,String> toVisit = Collections.synchronizedSortedMap(new TreeMap<String,String>());
+    public static SortedMap<String,String> visited = Collections.synchronizedSortedMap(new TreeMap<String,String>());
+    public static SortedMap<String,String> pageNotFound = Collections.synchronizedSortedMap(new TreeMap<String,String>());
+    public static SortedMap<String,String> imagesFound = Collections.synchronizedSortedMap(new TreeMap<String,String>());
+    public static SortedMap<String,String> imagesNotFound = Collections.synchronizedSortedMap(new TreeMap<String,String>());
 
     @Before
     public void Before(){
@@ -216,12 +214,11 @@ public class JavaLinkChecker extends Thread {
 
         System.out.println("TOVISIT: " + toVisit.size() + " VISITED: " + visited.size());
 
-        //DEBUG: if(toVisit.isEmpty() || visited.size()>99)
+        //if(toVisit.isEmpty() || visited.size()>99){
         if(toVisit.isEmpty()) {
             return null;
         } else {
-            Enumeration enumeration = toVisit.keys();
-            hrefToVisit[0] = (String)enumeration.nextElement();
+            hrefToVisit[0] = toVisit.firstKey();
             hrefToVisit[1] = toVisit.remove(hrefToVisit[0]);
             visited.put(hrefToVisit[0],hrefToVisit[1]);
 
